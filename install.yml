@@ -1,0 +1,141 @@
+---
+- name: Install Docker for Ubuntu
+  hosts: vm2
+  user: root
+  gather_facts: no
+  become: true
+  vars:
+    container_count: 4
+    default_container_name: docker
+    default_container_image: ubuntu
+    default_container_command: sleep 1d
+
+  tasks:
+    - name: Install aptitude using apt
+      apt: name=aptitude state=latest update_cache=yes force_apt_get=yes
+ 
+    - name: Install required system packages
+      apt: name={{ item }} state=latest update_cache=yes
+      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools']
+ 
+    - name: Add Docker GPG apt Key
+      apt_key:
+       url: https://download.docker.com/linux/ubuntu/gpg
+       state: present
+ 
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu jammy stable
+        state: present
+ 
+    - name: Update apt and install docker-ce
+      apt: update_cache=yes name=docker-ce state=latest
+ 
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+ 
+    - name: Pull default Docker image
+      docker_image:
+        name: "{{ container_image }}"
+        source: pull
+ 
+    - name: Create default containers
+      docker_container:
+        name: "{{ container_name }}{{ item }}"
+        image: "{{ container_image }}"
+        command: "{{ container_command }}"
+        state: present
+      with_sequence: count={{ containers }}
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+ 
+    - name: Add user skiv to docker group
+      user:
+        name: skiv
+        groups: docker
+        append: yes
+
+- name: Install Docker for CentOS
+  gather_facts: no
+  hosts: vm3
+  become: true
+ 
+  tasks:
+    - name: Install yum utils
+      yum:
+        name: yum-utils
+        state: latest
+ 
+    - name: Install device-mapper-persistent-data
+      yum:
+        name: device-mapper-persistent-data
+        state: latest
+ 
+    - name: Install lvm2
+      yum:
+        name: lvm2
+        state: latest
+ 
+    - name: Add Docker repo
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+      become: yes
+ 
+    - name: Install Docker
+      package:
+        name: docker-ce
+        state: latest
+      become: yes
+ 
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+ 
+    - name: Add user skiv to docker group
+      user:
+        name: skiv
+        groups: docker
+        append: yes
+      become: yes
+  
+- name: Install Postgresql-server for Ububntu
+  gather_facts: no
+  hosts: database
+  become: true
+  
+  vars:
+    postgresql_root_password: password
+
+  tasks:
+    - name: Set PostgreSQL root password before installing
+      debconf:
+        name: postgresql-server
+        question: postgresql-server/root_password
+        value: "{{ postgresql_root_password | quote }}"
+        vtype: password
+
+    - name: Install PostgreSQL 
+      apt:
+        name: postgresql
+        update_cache: yes
+
+    - name: Start up the PostgreSQL service
+      service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Ensure PostgreSQL is enabled to run on startup
+      service:
+        name: postgresql
+        enabled: true
+...
